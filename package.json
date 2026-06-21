@@ -1,0 +1,17 @@
+{
+  "name": "albion-payout-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A Discord ledger bot for Albion Online guild banks and payouts.",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "check": "node --check src/index.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "discord.js": "^14.19.3"
+  }
+}
