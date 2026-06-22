@@ -18,6 +18,7 @@ The bot tracks silver but does not transfer silver inside Albion Online.
 | --- | --- | --- |
 | `/zax-is-a-good-dog` | Everyone | Dog emoji |
 | `/bal [player]` | Everyone | View your balance or another player's balance |
+| `/bal-leaderboard` | Everyone | Show the top 15 balances |
 | `/split total reason player1 player2...` | Officer | Deduct tax, then split between selected players |
 | `/tax [percent]` | Officer | View or set the guild tax percentage |
 | `/add-money player amount reason` | Officer | Add to a player's running total |

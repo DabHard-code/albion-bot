@@ -70,6 +70,9 @@ const commands = [
       option.setName("player").setDescription("Player to view"),
     ),
   new SlashCommandBuilder()
+    .setName("bal-leaderboard")
+    .setDescription("Show the top 15 player balances"),
+  new SlashCommandBuilder()
     .setName("zax-is-a-good-dog")
     .setDescription("Zax is a good dog"),
   new SlashCommandBuilder()
@@ -303,6 +306,26 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.editReply(
         `${player}'s balance is **${formatSilver(getBalance(guildId, player.id))}**.`,
       );
+    }
+
+    if (interaction.commandName === "bal-leaderboard") {
+      const rows = db
+        .prepare("SELECT user_id, amount FROM balances WHERE guild_id = ? AND amount > 0 ORDER BY amount DESC LIMIT 15")
+        .all(guildId);
+      const text = rows.length
+        ? rows
+            .map((row, index) => `${index + 1}. <@${row.user_id}> - **${formatSilver(row.amount)}**`)
+            .join("\n")
+        : "No one has a balance yet.";
+
+      return interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("Balance Leaderboard")
+            .setDescription(text)
+            .setColor(0xd4af37),
+        ],
+      });
     }
 
     if (interaction.commandName === "version") {
