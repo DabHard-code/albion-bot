@@ -95,6 +95,9 @@ const commands = [
         option.setName(`player${index}`).setDescription(`Player ${index}`),
       );
     }
+    command.addAttachmentOption((option) =>
+      option.setName("screenshot").setDescription("Optional party screenshot for reference"),
+    );
     return command;
   })(),
   new SlashCommandBuilder()
@@ -301,6 +304,7 @@ client.on("interactionCreate", async (interaction) => {
       requireOfficer(interaction);
       const total = parseAmount(interaction.options.getString("total", true));
       const reason = interaction.options.getString("reason", true);
+      const screenshot = interaction.options.getAttachment("screenshot");
       const players = [];
       for (let index = 1; index <= 20; index += 1) {
         const player = interaction.options.getUser(`player${index}`);
@@ -308,6 +312,9 @@ client.on("interactionCreate", async (interaction) => {
       }
       if (players.some((player) => player.bot)) {
         throw new Error("Bots cannot receive split shares.");
+      }
+      if (screenshot && !screenshot.contentType?.startsWith("image/")) {
+        throw new Error("If you attach a screenshot, it needs to be an image.");
       }
       if (new Set(players.map((player) => player.id)).size !== players.length) {
         throw new Error("Each player can only be selected once.");
@@ -370,14 +377,18 @@ client.on("interactionCreate", async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle("Split Complete")
-            .setDescription(`${summary}\n\n${splitDetails}\n\nReason: ${reason}`)
+            .setDescription(
+              `${summary}\n\n${splitDetails}\n\nReason: ${reason}` +
+                (screenshot ? "\nScreenshot attached for reference." : ""),
+            )
             .setColor(0xd4af37),
         ],
       });
       return postAudit(
         interaction,
         "Split completed",
-        `${summary}\n\n${splitDetails}\n\nReason: ${reason}`,
+        `${summary}\n\n${splitDetails}\n\nReason: ${reason}` +
+          (screenshot ? "\nScreenshot attached for reference." : ""),
       );
     }
 
