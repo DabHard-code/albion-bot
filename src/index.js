@@ -12,6 +12,12 @@ import {
 const requiredEnv = ["DISCORD_TOKEN", "CLIENT_ID"];
 for (const name of requiredEnv) {
   if (!process.env[name]) {
+    console.error("Environment check failed:", {
+      DISCORD_TOKEN: process.env.DISCORD_TOKEN ? "set" : "missing",
+      CLIENT_ID: process.env.CLIENT_ID ? "set" : "missing",
+      OFFICER_ROLE_NAME: process.env.OFFICER_ROLE_NAME ? "set" : "default Officer",
+      AUDIT_CHANNEL_NAME: process.env.AUDIT_CHANNEL_NAME ? "set" : "default payout-audit",
+    });
     throw new Error(`Missing required environment variable: ${name}`);
   }
 }
