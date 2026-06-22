@@ -30,6 +30,8 @@ const config = {
   auditChannelName: process.env.AUDIT_CHANNEL_NAME ?? "payout-audit",
 };
 
+const botVersion = "2026-06-21.1";
+
 mkdirSync("data", { recursive: true });
 const db = new DatabaseSync("data/ledger.db");
 db.exec(`
@@ -70,6 +72,9 @@ const commands = [
   new SlashCommandBuilder()
     .setName("zax-is-a-good-dog")
     .setDescription("Zax is a good dog"),
+  new SlashCommandBuilder()
+    .setName("version")
+    .setDescription("Show the running bot version"),
   (() => {
     const command = new SlashCommandBuilder()
       .setName("split")
@@ -278,7 +283,7 @@ client.once("ready", async () => {
       body: [],
     });
   }
-  console.log(`Ready as ${client.user.tag}. Registered ${commands.length} global commands.`);
+  console.log(`Ready as ${client.user.tag}. Registered ${commands.length} global commands. Version ${botVersion}.`);
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -298,6 +303,10 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.editReply(
         `${player}'s balance is **${formatSilver(getBalance(guildId, player.id))}**.`,
       );
+    }
+
+    if (interaction.commandName === "version") {
+      return interaction.editReply(`Albion payout bot version **${botVersion}**.`);
     }
 
     if (interaction.commandName === "split") {
