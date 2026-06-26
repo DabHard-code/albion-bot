@@ -38,7 +38,7 @@ const config = {
   allowedChannelId,
 };
 
-const botVersion = "2026-06-21.1";
+const botVersion = "2026-06-25.1";
 
 mkdirSync("data", { recursive: true });
 const db = new DatabaseSync("data/ledger.db");
@@ -308,7 +308,9 @@ client.on("interactionCreate", async (interaction) => {
   try {
     if (config.allowedChannelId && interaction.channelId !== config.allowedChannelId) {
       return interaction.reply({
-        content: `Use this bot in <#${config.allowedChannelId}>.`,
+        content:
+          `Use this bot in <#${config.allowedChannelId}>.\n` +
+          `This channel ID is \`${interaction.channelId}\`; allowed channel ID is \`${config.allowedChannelId}\`.`,
         ephemeral: true,
       });
     }
