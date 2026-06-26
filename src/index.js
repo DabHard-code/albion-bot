@@ -29,7 +29,7 @@ const config = {
   legacyGuildId: process.env.LEGACY_GUILD_ID,
   officerRoleName: process.env.OFFICER_ROLE_NAME ?? "Officer",
   auditChannelName: process.env.AUDIT_CHANNEL_NAME ?? "payout-audit",
-  allowedChannelId: process.env.ALLOWED_CHANNEL_ID,
+  allowedChannelId: process.env.ALLOWED_CHANNEL_ID?.trim().replace(/^["']|["']$/g, ""),
 };
 
 const botVersion = "2026-06-21.1";
@@ -288,7 +288,12 @@ client.once("ready", async () => {
       body: [],
     });
   }
-  console.log(`Ready as ${client.user.tag}. Registered ${commands.length} global commands. Version ${botVersion}.`);
+  console.log(
+    `Ready as ${client.user.tag}. Registered ${commands.length} global commands. Version ${botVersion}. ` +
+      (config.allowedChannelId
+        ? `Commands locked to channel ${config.allowedChannelId}.`
+        : "Commands allowed in every channel."),
+  );
 });
 
 client.on("interactionCreate", async (interaction) => {
