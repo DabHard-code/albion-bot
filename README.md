@@ -27,6 +27,8 @@ The bot tracks silver but does not transfer silver inside Albion Online.
 | `/audit [count]` | Officer | View recent payout activity |
 
 Members with a Discord role named `Officer` can use every management command.
+If `ALLOWED_CHANNEL_ID` is set, every bot command is locked to that one
+Discord channel.
 
 ## Setup
 
@@ -36,6 +38,9 @@ Members with a Discord role named `Officer` can use every management command.
    invite it with View Channels, Send Messages, and Embed Links permissions.
 3. Create an `Officer` role. This is the only bot-management role.
 4. Copy `.env.example` to `.env` and fill in the IDs and bot token.
+   To lock the bot to one channel, enable Developer Mode in Discord, right-click
+   the allowed channel, copy its channel ID, and set `ALLOWED_CHANNEL_ID` to
+   that number.
 5. Install and run:
 
 ```powershell

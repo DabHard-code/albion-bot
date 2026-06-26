@@ -17,6 +17,7 @@ for (const name of requiredEnv) {
       CLIENT_ID: process.env.CLIENT_ID ? "set" : "missing",
       OFFICER_ROLE_NAME: process.env.OFFICER_ROLE_NAME ? "set" : "default Officer",
       AUDIT_CHANNEL_NAME: process.env.AUDIT_CHANNEL_NAME ? "set" : "default payout-audit",
+      ALLOWED_CHANNEL_ID: process.env.ALLOWED_CHANNEL_ID ? "set" : "not locked",
     });
     throw new Error(`Missing required environment variable: ${name}`);
   }
@@ -28,6 +29,7 @@ const config = {
   legacyGuildId: process.env.LEGACY_GUILD_ID,
   officerRoleName: process.env.OFFICER_ROLE_NAME ?? "Officer",
   auditChannelName: process.env.AUDIT_CHANNEL_NAME ?? "payout-audit",
+  allowedChannelId: process.env.ALLOWED_CHANNEL_ID,
 };
 
 const botVersion = "2026-06-21.1";
@@ -293,6 +295,13 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand() || !interaction.guildId) return;
 
   try {
+    if (config.allowedChannelId && interaction.channelId !== config.allowedChannelId) {
+      return interaction.reply({
+        content: `Use this bot in <#${config.allowedChannelId}>.`,
+        ephemeral: true,
+      });
+    }
+
     await interaction.deferReply({ ephemeral: interaction.commandName === "audit" });
     const guildId = interaction.guildId;
     const actorId = interaction.user.id;
