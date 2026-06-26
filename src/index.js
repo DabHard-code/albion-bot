@@ -308,9 +308,7 @@ client.on("interactionCreate", async (interaction) => {
   try {
     if (config.allowedChannelId && interaction.channelId !== config.allowedChannelId) {
       return interaction.reply({
-        content:
-          `Use this bot in <#${config.allowedChannelId}>.\n` +
-          `This channel ID is \`${interaction.channelId}\`; allowed channel ID is \`${config.allowedChannelId}\`.`,
+        content: "fuck you, use money channel",
         ephemeral: true,
       });
     }
