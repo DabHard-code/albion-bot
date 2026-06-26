@@ -9,18 +9,24 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 
-const requiredEnv = ["DISCORD_TOKEN", "CLIENT_ID"];
+const requiredEnv = ["DISCORD_TOKEN", "CLIENT_ID", "ALLOWED_CHANNEL_ID"];
 for (const name of requiredEnv) {
-  if (!process.env[name]) {
+  const value = process.env[name]?.trim();
+  if (!value) {
     console.error("Environment check failed:", {
       DISCORD_TOKEN: process.env.DISCORD_TOKEN ? "set" : "missing",
       CLIENT_ID: process.env.CLIENT_ID ? "set" : "missing",
       OFFICER_ROLE_NAME: process.env.OFFICER_ROLE_NAME ? "set" : "default Officer",
       AUDIT_CHANNEL_NAME: process.env.AUDIT_CHANNEL_NAME ? "set" : "default payout-audit",
-      ALLOWED_CHANNEL_ID: process.env.ALLOWED_CHANNEL_ID ? "set" : "not locked",
+      ALLOWED_CHANNEL_ID: process.env.ALLOWED_CHANNEL_ID ? "set" : "missing",
     });
     throw new Error(`Missing required environment variable: ${name}`);
   }
+}
+
+const allowedChannelId = process.env.ALLOWED_CHANNEL_ID.trim().replace(/^["']|["']$/g, "");
+if (!/^\d{17,20}$/.test(allowedChannelId)) {
+  throw new Error("ALLOWED_CHANNEL_ID must be a Discord channel ID, such as 1518451509052837979.");
 }
 
 const config = {
@@ -29,7 +35,7 @@ const config = {
   legacyGuildId: process.env.LEGACY_GUILD_ID,
   officerRoleName: process.env.OFFICER_ROLE_NAME ?? "Officer",
   auditChannelName: process.env.AUDIT_CHANNEL_NAME ?? "payout-audit",
-  allowedChannelId: process.env.ALLOWED_CHANNEL_ID?.trim().replace(/^["']|["']$/g, ""),
+  allowedChannelId,
 };
 
 const botVersion = "2026-06-21.1";
