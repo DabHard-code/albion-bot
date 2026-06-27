@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -9,7 +10,15 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 
-const requiredEnv = ["DISCORD_TOKEN", "CLIENT_ID", "ALLOWED_CHANNEL_ID"];
+const rawAllowedChannelIds = [
+  ...(process.env.ALLOWED_CHANNEL_IDS ?? "").split(","),
+  process.env.ALLOWED_CHANNEL_ID ?? "",
+]
+  .map((id) => id.trim().replace(/^["']|["']$/g, ""))
+  .filter(Boolean);
+const allowedChannelIds = [...new Set(rawAllowedChannelIds)];
+
+const requiredEnv = ["DISCORD_TOKEN", "CLIENT_ID"];
 for (const name of requiredEnv) {
   const value = process.env[name]?.trim();
   if (!value) {
@@ -18,15 +27,19 @@ for (const name of requiredEnv) {
       CLIENT_ID: process.env.CLIENT_ID ? "set" : "missing",
       OFFICER_ROLE_NAME: process.env.OFFICER_ROLE_NAME ? "set" : "default Officer",
       AUDIT_CHANNEL_NAME: process.env.AUDIT_CHANNEL_NAME ? "set" : "default payout-audit",
-      ALLOWED_CHANNEL_ID: process.env.ALLOWED_CHANNEL_ID ? "set" : "missing",
+      ALLOWED_CHANNEL_IDS: allowedChannelIds.length ? "set" : "missing",
     });
     throw new Error(`Missing required environment variable: ${name}`);
   }
 }
 
-const allowedChannelId = process.env.ALLOWED_CHANNEL_ID.trim().replace(/^["']|["']$/g, "");
-if (!/^\d{17,20}$/.test(allowedChannelId)) {
-  throw new Error("ALLOWED_CHANNEL_ID must be a Discord channel ID, such as 1518451509052837979.");
+if (!allowedChannelIds.length) {
+  throw new Error("ALLOWED_CHANNEL_IDS must include at least one Discord channel ID.");
+}
+for (const channelId of allowedChannelIds) {
+  if (!/^\d{17,20}$/.test(channelId)) {
+    throw new Error("ALLOWED_CHANNEL_IDS must contain Discord channel IDs, such as 1518451509052837979.");
+  }
 }
 
 const config = {
@@ -35,10 +48,10 @@ const config = {
   legacyGuildId: process.env.LEGACY_GUILD_ID,
   officerRoleName: process.env.OFFICER_ROLE_NAME ?? "Officer",
   auditChannelName: process.env.AUDIT_CHANNEL_NAME ?? "payout-audit",
-  allowedChannelId,
+  allowedChannelIds,
 };
 
-const botVersion = "2026-06-25.1";
+const botVersion = "2026-06-27.1";
 
 mkdirSync("data", { recursive: true });
 const db = new DatabaseSync("data/ledger.db");
@@ -66,9 +79,15 @@ db.exec(`
     target_id TEXT,
     amount INTEGER NOT NULL,
     reason TEXT,
+    split_group_id TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+const transactionColumns = db.prepare("PRAGMA table_info(transactions)").all();
+if (!transactionColumns.some((column) => column.name === "split_group_id")) {
+  db.exec("ALTER TABLE transactions ADD COLUMN split_group_id TEXT");
+}
 
 const commands = [
   new SlashCommandBuilder()
@@ -99,23 +118,20 @@ const commands = [
       .addStringOption((option) =>
         option.setName("reason").setDescription("What this split is for").setRequired(true),
       )
-      .addUserOption((option) =>
-        option.setName("player1").setDescription("First player").setRequired(true),
-      )
-      .addUserOption((option) =>
-        option.setName("player2").setDescription("Second player").setRequired(true),
+      .addStringOption((option) =>
+        option
+          .setName("players")
+          .setDescription("Paste player mentions or IDs, such as @A @B @C")
+          .setRequired(true),
       );
-
-    for (let index = 3; index <= 20; index += 1) {
-      command.addUserOption((option) =>
-        option.setName(`player${index}`).setDescription(`Player ${index}`),
-      );
-    }
     command.addAttachmentOption((option) =>
       option.setName("screenshot").setDescription("Optional party screenshot for reference"),
     );
     return command;
   })(),
+  new SlashCommandBuilder()
+    .setName("undo-last-split")
+    .setDescription("Undo and remove the most recent split"),
   new SlashCommandBuilder()
     .setName("add-money")
     .setDescription("Add to a player's running total")
@@ -188,6 +204,34 @@ function formatSilver(amount) {
   return `${new Intl.NumberFormat("en-US").format(amount)} silver`;
 }
 
+function parsePlayerIds(input) {
+  const ids = input
+    .split(/[\s,]+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map((token) => token.match(/^<@!?(\d{17,20})>$/)?.[1] ?? token.match(/^(\d{17,20})$/)?.[1])
+    .filter(Boolean);
+
+  if (!ids.length) {
+    throw new Error("Paste at least one player mention or Discord user ID.");
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw new Error("Each player can only be listed once.");
+  }
+  return ids;
+}
+
+function formatPlayerList(shares) {
+  const lines = shares.map(
+    (share) => `<@${share.playerId}>: **${formatSilver(share.amount)}**`,
+  );
+  const text = lines.join("\n");
+  if (text.length <= 3000) return text;
+
+  const preview = lines.slice(0, 30).join("\n");
+  return `${preview}\n...and ${lines.length - 30} more players.`;
+}
+
 function hasRoleNamed(interaction, roleName) {
   const roles = interaction.member.roles;
   if (Array.isArray(roles)) {
@@ -239,11 +283,11 @@ function setBalance(guildId, userId, amount) {
   `).run(guildId, userId, amount);
 }
 
-function record(guildId, actorId, action, targetId, amount, reason) {
+function record(guildId, actorId, action, targetId, amount, reason, splitGroupId = null) {
   db.prepare(`
-    INSERT INTO transactions (guild_id, actor_id, action, target_id, amount, reason)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(guildId, actorId, action, targetId, amount, reason ?? null);
+    INSERT INTO transactions (guild_id, actor_id, action, target_id, amount, reason, split_group_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(guildId, actorId, action, targetId, amount, reason ?? null, splitGroupId);
 }
 
 async function postAudit(interaction, title, details) {
@@ -296,9 +340,7 @@ client.once("ready", async () => {
   }
   console.log(
     `Ready as ${client.user.tag}. Registered ${commands.length} global commands. Version ${botVersion}. ` +
-      (config.allowedChannelId
-        ? `Commands locked to channel ${config.allowedChannelId}.`
-        : "Commands allowed in every channel."),
+      `Commands locked to channels ${config.allowedChannelIds.join(", ")}.`,
   );
 });
 
@@ -306,7 +348,7 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand() || !interaction.guildId) return;
 
   try {
-    if (config.allowedChannelId && interaction.channelId !== config.allowedChannelId) {
+    if (!config.allowedChannelIds.includes(interaction.channelId)) {
       return interaction.reply({
         content: "fuck you, use money channel",
         ephemeral: true,
@@ -357,32 +399,23 @@ client.on("interactionCreate", async (interaction) => {
       const total = parseAmount(interaction.options.getString("total", true));
       const reason = interaction.options.getString("reason", true);
       const screenshot = interaction.options.getAttachment("screenshot");
-      const players = [];
-      for (let index = 1; index <= 20; index += 1) {
-        const player = interaction.options.getUser(`player${index}`);
-        if (player) players.push(player);
-      }
-      if (players.some((player) => player.bot)) {
-        throw new Error("Bots cannot receive split shares.");
-      }
+      const playerIds = parsePlayerIds(interaction.options.getString("players", true));
       if (screenshot && !screenshot.contentType?.startsWith("image/")) {
         throw new Error("If you attach a screenshot, it needs to be an image.");
-      }
-      if (new Set(players.map((player) => player.id)).size !== players.length) {
-        throw new Error("Each player can only be selected once.");
       }
 
       const taxBasisPoints = getTaxBasisPoints(guildId);
       const taxAmount = Math.floor((total * taxBasisPoints) / 10_000);
       const playerTotal = total - taxAmount;
-      if (playerTotal < players.length) {
+      if (playerTotal < playerIds.length) {
         throw new Error("The total must be at least one silver per selected player.");
       }
 
-      const baseShare = Math.floor(playerTotal / players.length);
-      const remainder = playerTotal % players.length;
-      const shares = players.map((player, index) => ({
-        player,
+      const baseShare = Math.floor(playerTotal / playerIds.length);
+      const remainder = playerTotal % playerIds.length;
+      const splitGroupId = randomUUID();
+      const shares = playerIds.map((playerId, index) => ({
+        playerId,
         amount: baseShare + (index < remainder ? 1 : 0),
       }));
 
@@ -391,16 +424,17 @@ client.on("interactionCreate", async (interaction) => {
         for (const share of shares) {
           setBalance(
             guildId,
-            share.player.id,
-            getBalance(guildId, share.player.id) + share.amount,
+            share.playerId,
+            getBalance(guildId, share.playerId) + share.amount,
           );
           record(
             guildId,
             actorId,
             "PLAYER_SPLIT",
-            share.player.id,
+            share.playerId,
             share.amount,
             reason,
+            splitGroupId,
           );
         }
         db.exec("COMMIT");
@@ -409,17 +443,12 @@ client.on("interactionCreate", async (interaction) => {
         throw error;
       }
 
-      const splitDetails = shares
-        .map(
-          (share) =>
-            `${share.player}: **${formatSilver(share.amount)}**`,
-        )
-        .join("\n");
+      const splitDetails = formatPlayerList(shares);
       const summary =
         `Gross total: **${formatSilver(total)}**\n` +
         `Guild tax (${taxBasisPoints / 100}%): **${formatSilver(taxAmount)}**\n` +
         `Player total: **${formatSilver(playerTotal)}**\n` +
-        `Split between **${players.length} selected players**.\n` +
+        `Split between **${playerIds.length} selected players**.\n` +
         `Base share: **${formatSilver(baseShare)}**` +
         (remainder
           ? `\n${remainder} member${remainder === 1 ? "" : "s"} received 1 extra silver.`
@@ -442,6 +471,81 @@ client.on("interactionCreate", async (interaction) => {
         `${summary}\n\n${splitDetails}\n\nReason: ${reason}` +
           (screenshot ? "\nScreenshot attached for reference." : ""),
       );
+    }
+
+    if (interaction.commandName === "undo-last-split") {
+      requireOfficer(interaction);
+      const latest = db
+        .prepare(`
+          SELECT split_group_id
+          FROM transactions
+          WHERE guild_id = ?
+            AND action = 'PLAYER_SPLIT'
+            AND split_group_id IS NOT NULL
+          ORDER BY id DESC
+          LIMIT 1
+        `)
+        .get(guildId);
+      if (!latest?.split_group_id) {
+        throw new Error("No undoable split found. Only splits made after the undo update can be undone.");
+      }
+
+      const rows = db
+        .prepare(`
+          SELECT target_id, amount, reason
+          FROM transactions
+          WHERE guild_id = ?
+            AND action = 'PLAYER_SPLIT'
+            AND split_group_id = ?
+          ORDER BY id ASC
+        `)
+        .all(guildId, latest.split_group_id);
+      if (!rows.length) {
+        throw new Error("No undoable split found.");
+      }
+
+      for (const row of rows) {
+        const balance = getBalance(guildId, row.target_id);
+        if (balance < row.amount) {
+          throw new Error(
+            `Cannot undo because <@${row.target_id}> only has **${formatSilver(balance)}**, ` +
+              `but this undo needs to remove **${formatSilver(row.amount)}**.`,
+          );
+        }
+      }
+
+      db.exec("BEGIN");
+      try {
+        for (const row of rows) {
+          setBalance(guildId, row.target_id, getBalance(guildId, row.target_id) - row.amount);
+        }
+        db
+          .prepare("DELETE FROM transactions WHERE guild_id = ? AND split_group_id = ?")
+          .run(guildId, latest.split_group_id);
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+
+      const totalRemoved = rows.reduce((sum, row) => sum + row.amount, 0);
+      const undoneDetails = formatPlayerList(
+        rows.map((row) => ({ playerId: row.target_id, amount: row.amount })),
+      );
+      const reason = rows[0]?.reason ?? "No reason recorded";
+      const summary =
+        `Removed **${formatSilver(totalRemoved)}** from **${rows.length} players**.\n` +
+        `Original reason: ${reason}\n\n${undoneDetails}`;
+
+      await interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("Last Split Undone")
+            .setDescription(summary)
+            .setColor(0xd4af37),
+        ],
+      });
+      return postAudit(interaction, "Split undone", summary);
     }
 
     if (interaction.commandName === "add-money") {

@@ -19,7 +19,8 @@ The bot tracks silver but does not transfer silver inside Albion Online.
 | `/zax-is-a-good-dog` | Everyone | Dog emoji |
 | `/bal [player]` | Everyone | View your balance or another player's balance |
 | `/bal-leaderboard` | Everyone | Show the top 15 balances |
-| `/split total reason player1 player2...` | Officer | Deduct tax, then split between selected players |
+| `/split total reason players` | Officer | Deduct tax, then split between pasted player mentions or IDs |
+| `/undo-last-split` | Officer | Remove the most recent split and subtract those shares from balances |
 | `/tax [percent]` | Officer | View or set the guild tax percentage |
 | `/add-money player amount reason` | Officer | Add to a player's running total |
 | `/transfer player amount [reason]` | Everyone | Transfer part of your running total to another player |
@@ -27,7 +28,7 @@ The bot tracks silver but does not transfer silver inside Albion Online.
 | `/audit [count]` | Officer | View recent payout activity |
 
 Members with a Discord role named `Officer` can use every management command,
-but every command is still locked to `ALLOWED_CHANNEL_ID`.
+but every command is still locked to `ALLOWED_CHANNEL_IDS`.
 
 ## Setup
 
@@ -37,8 +38,9 @@ but every command is still locked to `ALLOWED_CHANNEL_ID`.
    invite it with View Channels, Send Messages, and Embed Links permissions.
 3. Create an `Officer` role. This is the only bot-management role.
 4. Copy `.env.example` to `.env` and fill in the IDs and bot token.
-   Enable Developer Mode in Discord, right-click the allowed command channel,
-   copy its channel ID, and set `ALLOWED_CHANNEL_ID` to that number.
+   Enable Developer Mode in Discord, right-click each allowed command channel,
+   copy its channel ID, and set `ALLOWED_CHANNEL_IDS` to those IDs separated by
+   commas.
 5. Install and run:
 
 ```powershell
@@ -54,7 +56,6 @@ logs. Balances are stored in `data/ledger.db`; include that file in backups.
 ## Split example
 
 First set the tax with `/tax percent:10`. Then use `/split total:2m
-reason:"roads run"` and select the players with `player1`, `player2`, and any
-extra player slots you need. The bot deducts `200k` as guild tax and divides the
-remaining `1.8m` between the selected players. The tax amount is shown in the
-result.
+reason:"roads run" players:"@A @B @C"`. The bot deducts `200k` as guild tax and
+divides the remaining `1.8m` between the pasted players. The tax amount is shown
+in the result.
